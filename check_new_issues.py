@@ -29,6 +29,12 @@ REPOS = [
     "microsoft/DeepSpeed",
     "BerriAI/litellm",
 ]
+
+# When True, only notify for issues labeled for outside contributors
+# (case-insensitive match against WANTED_LABELS below). Set to False to
+# get every new issue again.
+ONLY_CONTRIBUTOR_LABELS = True
+WANTED_LABELS = {"good first issue", "help wanted"}
 # -----------------------------------------------------------------------------
 
 STATE_FILE = "state/last_check.txt"
@@ -88,13 +94,21 @@ def find_new_issues(since):
             # PR items have a "pull_request" key, so skip those.
             if "pull_request" in item:
                 continue
+
+            labels = [label["name"] for label in item.get("labels", [])]
+
+            if ONLY_CONTRIBUTOR_LABELS:
+                normalized = {l.lower() for l in labels}
+                if not normalized & WANTED_LABELS:
+                    continue
+
             found.append(
                 {
                     "repo": repo,
                     "title": item["title"],
                     "number": item["number"],
                     "url": item["html_url"],
-                    "labels": [label["name"] for label in item.get("labels", [])],
+                    "labels": labels,
                 }
             )
     return found
