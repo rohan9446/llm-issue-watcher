@@ -20,6 +20,7 @@ REPOS = [
     "vllm-project/vllm",
     "vllm-project/guidellm",
     "vllm-project/llm-compressor",
+    "vllm-project/vllm-omni",
     "ggml-org/llama.cpp",
     "huggingface/transformers",
     "sgl-project/sglang",
