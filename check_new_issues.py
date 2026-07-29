@@ -17,18 +17,42 @@ from datetime import datetime, timedelta, timezone
 
 # --- Configure your repo list here -----------------------------------------
 REPOS = [
+    # --- LLM inference & serving ---
     "vllm-project/vllm",
     "vllm-project/guidellm",
     "vllm-project/llm-compressor",
     "vllm-project/vllm-omni",
     "ggml-org/llama.cpp",
-    "huggingface/transformers",
     "sgl-project/sglang",
     "NVIDIA/TensorRT-LLM",
     "ollama/ollama",
     "huggingface/text-generation-inference",
-    "microsoft/DeepSpeed",
     "BerriAI/litellm",
+    "lm-sys/FastChat",
+
+    # --- Training / fine-tuning / model compression ---
+    "microsoft/DeepSpeed",
+    "huggingface/transformers",
+    "huggingface/peft",
+    "huggingface/accelerate",
+    "unslothai/unsloth",
+    "axolotl-ai-cloud/axolotl",
+
+    # --- Agent frameworks ---
+    "langchain-ai/langchain",
+    "run-llama/llama_index",
+    "microsoft/autogen",
+    "crewAIInc/crewAI",
+
+    # --- Data engineering / pipelines ---
+    "apache/airflow",
+    "ray-project/ray",
+    "apache/spark",
+
+    # --- Vector search / retrieval ---
+    "milvus-io/milvus",
+    "qdrant/qdrant",
+    "chroma-core/chroma",
 ]
 
 # When True, only notify for issues labeled for outside contributors
