@@ -1,9 +1,9 @@
 name: Notify New LLM Repo Issues
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"   # every 30 minutes; edit as you like (min interval 5)
-  workflow_dispatch: {}       # lets you trigger it manually from the Actions tab
+  workflow_dispatch: {}       # triggered externally by cron-job.org (reliable); GitHub's own
+                               # `schedule:` trigger was removed since it was unreliable
+                               # (see cron-job.org for the actual schedule)
 
 permissions:
   contents: write            # needed to commit the updated state/last_check.txt
@@ -18,7 +18,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # auto-provided by Actions
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}        # you set this secret yourself
-        run: python3 check_new_issues.py
+        run: python3 scripts/check_new_issues.py
 
       - name: Commit updated state
         run: |
