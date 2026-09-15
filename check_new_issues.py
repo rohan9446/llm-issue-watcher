@@ -65,11 +65,49 @@ REPOS = [
     "chroma-core/chroma",
 ]
 
-# When True, only notify for issues labeled for outside contributors
-# (case-insensitive match against WANTED_LABELS below). Set to False to
-# get every new issue again.
+# When True, only notify for issues labeled for outside contributors.
+# Matching is substring-based and case-insensitive against WANTED_LABEL_PATTERNS
+# below, since projects don't standardize on exact label text (e.g. some use
+# "good-first-issue", some use "E-help-wanted", some use "beginner friendly").
+# Set to False to get every new issue again, everywhere.
 ONLY_CONTRIBUTOR_LABELS = True
-WANTED_LABELS = {"good first issue", "help wanted"}
+WANTED_LABEL_PATTERNS = [
+    "good first issue",
+    "good-first-issue",
+    "goodfirstissue",
+    "good second issue",
+    "help wanted",
+    "help-wanted",
+    "helpwanted",
+    "beginner",
+    "starter",
+    "easy",
+    "up for grabs",
+    "up-for-grabs",
+    "first-timers-only",
+    "first timers only",
+    "contribution(s) welcome",
+    "contributions welcome",
+    "low-hanging-fruit",
+    "low hanging fruit",
+]
+
+# Repos that don't label consistently enough for the filter above to be useful
+# (e.g. tracked mainly on JIRA instead of GitHub Issues, or just don't label).
+# For these specific repos, ONLY_CONTRIBUTOR_LABELS is ignored and you get
+# every new issue instead.
+NO_LABEL_FILTER_REPOS = {
+    "apache/spark",           # issue tracking mostly lives on Apache JIRA
+    "NVIDIA/TensorRT-LLM",
+    "ollama/ollama",
+    "vllm-project/vllm-omni",
+    "axolotl-ai-cloud/axolotl",
+}
+
+
+def matches_wanted_label(labels):
+    lowered = [l.lower() for l in labels]
+    return any(pattern in label for label in lowered for pattern in WANTED_LABEL_PATTERNS)
 # -----------------------------------------------------------------------------
 
 STATE_FILE = "state/state.json"
@@ -158,9 +196,8 @@ def find_new_issues(since):
 
             labels = [label["name"] for label in item.get("labels", [])]
 
-            if ONLY_CONTRIBUTOR_LABELS:
-                normalized = {l.lower() for l in labels}
-                if not normalized & WANTED_LABELS:
+            if ONLY_CONTRIBUTOR_LABELS and repo not in NO_LABEL_FILTER_REPOS:
+                if not matches_wanted_label(labels):
                     continue
 
             found.append(
