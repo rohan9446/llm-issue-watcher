@@ -6,7 +6,7 @@ on:
                                # (see cron-job.org for the actual schedule)
 
 permissions:
-  contents: write            # needed to commit the updated state/last_check.txt
+  contents: write            # needed to commit the updated state/state.json
 
 jobs:
   check-issues:
@@ -24,6 +24,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state/last_check.txt
-          git diff --staged --quiet || git commit -m "Update last check timestamp [skip ci]"
-          git push
+          git add state/state.json
+          git diff --staged --quiet && exit 0
+          git commit -m "Update check state [skip ci]"
+          # In case another run pushed in between, retry once after rebasing
+          # rather than failing the whole job (this state is cheap to redo).
+          git push || (git pull --rebase && git push)
