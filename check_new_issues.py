@@ -3,9 +3,19 @@
 Polls a fixed list of GitHub repos for newly-opened issues since the last run
 and pushes a notification via ntfy.sh (free, no-signup push notifications).
 
-State (the timestamp of the last successful check) is stored in
-state/last_check.txt and committed back to the repo by the workflow, so each
-run only reports issues opened since the previous run.
+State is stored as JSON in state/state.json and committed back to the repo
+by the workflow. It tracks two things:
+  - last_check: the timestamp of the last successful check
+  - notified:   a rolling list of "repo#number" keys already notified about
+
+Why both: GitHub's search API can lag a few seconds to a minute behind an
+issue actually being created (indexing delay). If we only tracked a plain
+timestamp and advanced it to "now" every run, an issue created right at the
+boundary of a run (created, but not yet indexed when that run queried) would
+permanently fall into the gap and never be reported. To fix this we always
+look back a bit further than the last check (OVERLAP_SECONDS) so borderline
+issues get re-queried on the next run — and we keep a dedupe list so that
+overlap doesn't cause the same issue to be notified twice.
 """
 import json
 import os
@@ -62,7 +72,11 @@ ONLY_CONTRIBUTOR_LABELS = True
 WANTED_LABELS = {"good first issue", "help wanted"}
 # -----------------------------------------------------------------------------
 
-STATE_FILE = "state/last_check.txt"
+STATE_FILE = "state/state.json"
+OLD_STATE_FILE = "state/last_check.txt"  # previous plain-text format, for one-time migration
+OVERLAP_SECONDS = 180  # always re-check the last 3 min too, to cover search-index lag
+MAX_NOTIFIED_HISTORY = 2000  # cap dedupe list so the state file doesn't grow forever
+
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 NTFY_SERVER = os.environ.get("NTFY_SERVER", "https://ntfy.sh")
@@ -80,20 +94,42 @@ def gh_request(url):
         return json.load(resp)
 
 
-def read_last_check():
+def load_state():
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE) as f:
+        try:
+            with open(STATE_FILE) as f:
+                data = json.load(f)
+            data.setdefault("last_check", None)
+            data.setdefault("notified", [])
+            return data
+        except Exception as e:  # noqa: BLE001
+            print(f"Could not parse {STATE_FILE}, starting fresh: {e}", file=sys.stderr)
+
+    # One-time migration from the old plain-text timestamp file, if present.
+    if os.path.exists(OLD_STATE_FILE):
+        with open(OLD_STATE_FILE) as f:
             ts = f.read().strip()
-            if ts:
-                return ts
-    # first ever run: only look back 1 hour so we don't spam on setup
-    return (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if ts:
+            return {"last_check": ts, "notified": []}
+
+    return {"last_check": None, "notified": []}
 
 
-def write_last_check(ts):
+def save_state(state):
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    state["notified"] = state["notified"][-MAX_NOTIFIED_HISTORY:]
     with open(STATE_FILE, "w") as f:
-        f.write(ts)
+        json.dump(state, f)
+
+
+def compute_since(last_check):
+    if last_check:
+        last_dt = datetime.strptime(last_check, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        since_dt = last_dt - timedelta(seconds=OVERLAP_SECONDS)
+    else:
+        # first ever run: only look back 1 hour so we don't spam on setup
+        since_dt = datetime.now(timezone.utc) - timedelta(hours=1)
+    return since_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def find_new_issues(since):
@@ -171,16 +207,30 @@ def send_ntfy(issues):
 
 
 def main():
-    since = read_last_check()
+    state = load_state()
+    since = compute_since(state["last_check"])
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    issues = find_new_issues(since)
-    print(f"Checked {len(REPOS)} repos since {since}: found {len(issues)} new issue(s).")
+    matching = find_new_issues(since)
 
-    if issues:
-        send_ntfy(issues)
+    already_notified = set(state["notified"])
+    new_issues = [
+        iss for iss in matching
+        if f"{iss['repo']}#{iss['number']}" not in already_notified
+    ]
 
-    write_last_check(now)
+    print(
+        f"Checked {len(REPOS)} repos since {since} (includes {OVERLAP_SECONDS}s overlap): "
+        f"{len(matching)} matching issue(s), {len(new_issues)} not yet notified."
+    )
+
+    if new_issues:
+        send_ntfy(new_issues)
+        for iss in new_issues:
+            state["notified"].append(f"{iss['repo']}#{iss['number']}")
+
+    state["last_check"] = now
+    save_state(state)
 
 
 if __name__ == "__main__":
