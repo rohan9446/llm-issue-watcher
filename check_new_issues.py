@@ -20,6 +20,7 @@ overlap doesn't cause the same issue to be notified twice.
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -104,7 +105,43 @@ REPOS = [
     ("rust-lang/rust", "SDE"),        # uses "E-easy" instead of "good first issue"
     ("facebook/react", "SDE"),        # uses "good first bug" instead of "good first issue"
     ("electron/electron", "SDE"),
+
+    # --- Microsoft SDE (confirmed active labeling via total_count verification) ---
+    ("dotnet/runtime", "SDE"),        # 2786 "help wanted" issues, very recent
+    ("dotnet/aspnetcore", "SDE"),     # 743 "help wanted" issues, recent
+    ("microsoft/PowerToys", "SDE"),   # 414 "Help Wanted" issues, recent
+    ("microsoft/TypeScript", "SDE"),  # 3563 combined "help wanted"/"good first issue", very active
+    ("microsoft/terminal", "SDE"),    # 183 "good first issue" + 1311 "Help Wanted", very active
+                                       # (earlier check used wrong label name "Easy Starter" and
+                                       # wrongly flagged this repo as non-labeling — corrected)
+
+    # --- Facebook/Meta SDE (confirmed active labeling) ---
+    ("facebook/docusaurus", "SDE"),   # 245 "good first issue" issues, recent
+    ("facebook/pyrefly", "SDE"),      # 138 "good first issue" issues, very recent (2026-08)
+
+    # --- Data infra SDE (confirmed active labeling) ---
+    ("opensearch-project/OpenSearch", "SDE"),  # 185 "good first issue" issues, very recent
+
+    # --- AI/ML serving & tooling, confirmed active labeling ---
+    ("kserve/kserve", "AI"),          # 48 "good first issue" issues, very recent
+    ("llm-d/llm-d", "AI"),            # 14 "good first issue"/"help wanted" issues
+    ("docling-project/docling", "AI"),  # 29 "good first issue" issues, very recent
+
+    # --- Google AI agent frameworks (confirmed active labeling) ---
+    ("google-gemini/gemini-cli", "AI"),  # 48 "good first issue" issues, very recent
+    ("google/adk-python", "AI"),         # 26 "good first issue"/"help wanted" issues
 ]
+
+# Repos considered but DROPPED after verification showed no real label usage
+# (total_count came back 0 for "good first issue" / "help wanted" style labels):
+#   google/flax, huggingface/trl, triton-lang/triton, microsoft/winget-cli
+#
+# Repos considered but left OUT because verification was inconclusive (GitHub API
+# fetches for these kept failing/returning empty across multiple retries, not a
+# confirmed rate limit — rather than guess, they're excluded until they can be
+# re-checked): microsoft/presidio, strands-agents/sdk-python, LMCache/LMCache,
+# flwrlabs/flower, apache/arrow, astral-sh/ruff, rust-lang/cargo,
+# meta-llama/llama-stack
 
 # When True, only notify for issues labeled for outside contributors.
 # Matching is substring-based and case-insensitive against WANTED_LABEL_PATTERNS
@@ -217,9 +254,21 @@ def compute_since(last_check):
     return since_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+
+# GitHub's search API allows 30 req/min with an authenticated token (10/min
+# without). With REPOS now around ~90 entries, checking them all back-to-back
+# would blow through that limit partway through the run and start failing with
+# 403s. A small sleep between requests keeps us comfortably under it: at
+# ~2.2s/request that's ~27/min, leaving some headroom.
+REQUEST_THROTTLE_SECONDS = 2.2
+
+
 def find_new_issues(since):
     found = []
-    for repo, category in REPOS:
+    for i, (repo, category) in enumerate(REPOS):
+        if i > 0:
+            time.sleep(REQUEST_THROTTLE_SECONDS)
+
         query = f"repo:{repo} is:issue created:>={since}"
         url = (
             "https://api.github.com/search/issues?q="
