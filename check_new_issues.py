@@ -26,43 +26,84 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 # --- Configure your repo list here -----------------------------------------
+# Each entry is (repo, category). category shows up in the notification so
+# you can tell at a glance whether it's an AI/ML repo or general software
+# engineering ("SDE"). Add your own categories freely — the tag is just
+# whatever string you put here.
 REPOS = [
-    # --- LLM inference & serving ---
-    "vllm-project/vllm",
-    "vllm-project/guidellm",
-    "vllm-project/llm-compressor",
-    "vllm-project/vllm-omni",
-    "ggml-org/llama.cpp",
-    "sgl-project/sglang",
-    "NVIDIA/TensorRT-LLM",
-    "ollama/ollama",
-    "huggingface/text-generation-inference",
-    "BerriAI/litellm",
-    "lm-sys/FastChat",
+    # --- LLM inference & serving (AI) ---
+    ("vllm-project/vllm", "AI"),
+    ("vllm-project/guidellm", "AI"),
+    ("vllm-project/llm-compressor", "AI"),
+    ("vllm-project/vllm-omni", "AI"),
+    ("ggml-org/llama.cpp", "AI"),
+    ("sgl-project/sglang", "AI"),
+    ("NVIDIA/TensorRT-LLM", "AI"),
+    ("ollama/ollama", "AI"),
+    ("huggingface/text-generation-inference", "AI"),
+    ("BerriAI/litellm", "AI"),
+    ("lm-sys/FastChat", "AI"),
 
-    # --- Training / fine-tuning / model compression ---
-    "microsoft/DeepSpeed",
-    "huggingface/transformers",
-    "huggingface/peft",
-    "huggingface/accelerate",
-    "unslothai/unsloth",
-    "axolotl-ai-cloud/axolotl",
+    # --- Training / fine-tuning / model compression (AI) ---
+    ("microsoft/DeepSpeed", "AI"),
+    ("huggingface/transformers", "AI"),
+    ("huggingface/peft", "AI"),
+    ("huggingface/accelerate", "AI"),
+    ("unslothai/unsloth", "AI"),
+    ("axolotl-ai-cloud/axolotl", "AI"),
 
-    # --- Agent frameworks ---
-    "langchain-ai/langchain",
-    "run-llama/llama_index",
-    "microsoft/autogen",
-    "crewAIInc/crewAI",
+    # --- Agent frameworks (AI) ---
+    ("langchain-ai/langchain", "AI"),
+    ("run-llama/llama_index", "AI"),
+    ("microsoft/autogen", "AI"),
+    ("crewAIInc/crewAI", "AI"),
 
-    # --- Data engineering / pipelines ---
-    "apache/airflow",
-    "ray-project/ray",
-    "apache/spark",
+    # --- Data engineering / pipelines (AI-adjacent) ---
+    ("apache/airflow", "AI"),
+    ("ray-project/ray", "AI"),
+    ("apache/spark", "AI"),
 
-    # --- Vector search / retrieval ---
-    "milvus-io/milvus",
-    "qdrant/qdrant",
-    "chroma-core/chroma",
+    # --- Vector search / retrieval (AI) ---
+    ("milvus-io/milvus", "AI"),
+    ("qdrant/qdrant", "AI"),
+    ("chroma-core/chroma", "AI"),
+
+    # --- Data science / ML tooling (AI, strong "good first issue" hygiene) ---
+    ("pandas-dev/pandas", "AI"),
+    ("scikit-learn/scikit-learn", "AI"),
+    ("huggingface/datasets", "AI"),
+    ("mlflow/mlflow", "AI"),
+
+    # --- ML app-building frameworks (AI) ---
+    ("streamlit/streamlit", "AI"),
+    ("gradio-app/gradio", "AI"),
+
+    # --- Microsoft AI/ML (AI, confirmed active labeling) ---
+    ("microsoft/LightGBM", "AI"),
+    ("microsoft/onnxruntime", "AI"),
+    ("microsoft/semantic-kernel", "AI"),
+
+    # --- NVIDIA AI/ML (AI, confirmed active labeling; NeMo moved orgs in 2026) ---
+    ("NVIDIA-NeMo/NeMo", "AI"),  # was NVIDIA/NeMo, repo transferred to the new NVIDIA-NeMo org
+
+    # --- Data orchestration (AI-adjacent) ---
+    ("PrefectHQ/prefect", "AI"),
+
+    # --- Google (AI, label exists but used sparingly) ---
+    ("jax-ml/jax", "AI"),  # was google/jax, org renamed
+
+    # --- AMD (AI) ---
+    ("ROCm/rocm-libraries", "AI"),  # confirmed active "good first issue" items
+
+    # --- Databricks-adjacent data lake ecosystem (AI-adjacent / data) ---
+    ("delta-io/delta-rs", "AI"),  # confirmed active "good-first-issue" usage
+
+    # --- General software engineering (SDE), confirmed active labeling ---
+    ("home-assistant/core", "SDE"),
+    ("microsoft/vscode", "SDE"),
+    ("rust-lang/rust", "SDE"),        # uses "E-easy" instead of "good first issue"
+    ("facebook/react", "SDE"),        # uses "good first bug" instead of "good first issue"
+    ("electron/electron", "SDE"),
 ]
 
 # When True, only notify for issues labeled for outside contributors.
@@ -75,6 +116,7 @@ WANTED_LABEL_PATTERNS = [
     "good first issue",
     "good-first-issue",
     "goodfirstissue",
+    "good first bug",  # e.g. facebook/react
     "good second issue",
     "help wanted",
     "help-wanted",
@@ -96,12 +138,17 @@ WANTED_LABEL_PATTERNS = [
 # (e.g. tracked mainly on JIRA instead of GitHub Issues, or just don't label).
 # For these specific repos, ONLY_CONTRIBUTOR_LABELS is ignored and you get
 # every new issue instead.
+#
+# NOTE: this is only worth it for genuinely low-volume repos where "every new
+# issue" is still a small, relevant stream. For high-volume/uncurated repos
+# (NVIDIA/TensorRT-LLM, vllm-project/vllm-omni turned out this way in
+# practice — lots of regular bug reports, nothing pickup-able), exempting
+# them just means a flood of noise instead of zero signal, which is worse.
+# Left those OFF this list on purpose; they fall back to the strict label
+# filter and may simply produce very few/no notifications until they label
+# something — that's fine.
 NO_LABEL_FILTER_REPOS = {
     "apache/spark",           # issue tracking mostly lives on Apache JIRA
-    "NVIDIA/TensorRT-LLM",
-    "ollama/ollama",
-    "vllm-project/vllm-omni",
-    "axolotl-ai-cloud/axolotl",
 }
 
 
@@ -172,7 +219,7 @@ def compute_since(last_check):
 
 def find_new_issues(since):
     found = []
-    for repo in REPOS:
+    for repo, category in REPOS:
         query = f"repo:{repo} is:issue created:>={since}"
         url = (
             "https://api.github.com/search/issues?q="
@@ -203,6 +250,7 @@ def find_new_issues(since):
             found.append(
                 {
                     "repo": repo,
+                    "category": category,
                     "title": item["title"],
                     "number": item["number"],
                     "url": item["html_url"],
@@ -216,7 +264,9 @@ def build_message(issues):
     lines = []
     for iss in issues:
         tag = f" [{', '.join(iss['labels'])}]" if iss["labels"] else ""
-        lines.append(f"{iss['repo']} #{iss['number']}: {iss['title']}{tag}\n{iss['url']}")
+        lines.append(
+            f"[{iss['category']}] {iss['repo']} #{iss['number']}: {iss['title']}{tag}\n{iss['url']}"
+        )
     message = "\n\n".join(lines)
     if len(message) > MAX_MESSAGE_CHARS:
         message = message[:MAX_MESSAGE_CHARS] + f"\n\n...and more (truncated, {len(issues)} total)"
@@ -228,7 +278,11 @@ def send_ntfy(issues):
         print("NTFY_TOPIC not set; skipping notification. Set it as a repo secret.", file=sys.stderr)
         return
     message = build_message(issues)
-    title = f"{len(issues)} new issue(s) in tracked LLM repos"
+    counts_by_category = {}
+    for iss in issues:
+        counts_by_category[iss["category"]] = counts_by_category.get(iss["category"], 0) + 1
+    breakdown = ", ".join(f"{n} {cat}" for cat, n in sorted(counts_by_category.items()))
+    title = f"{len(issues)} new issue(s): {breakdown}"
     req = urllib.request.Request(
         f"{NTFY_SERVER}/{NTFY_TOPIC}",
         data=message.encode("utf-8"),
